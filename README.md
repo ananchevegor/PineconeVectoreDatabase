@@ -1,103 +1,93 @@
-# Информация, относящаяся к теме
-Во-первых, это все для меня. Тут будут просто записки того что я понял и тд и тп.
+# Information relevant to the topic
+First of all, this is all for myself.
+These will just be notes about what I’ve understood, etc.
 
 ```
 
-1. Векторные базы данных хранят информацию в векторах и осуществляют поиск "по смыслу"(семастический поиск). Это значит, что в отличие от обычной индексированной базы данных, где осуществляется поиск по id(или другим параметрам), который должен СТРОГО совпадать с записью, в векторной это совпадение не обязательное условие.
+1. Vector databases store information in vectors and perform search “by meaning” (semantic search). This means that, unlike a regular indexed database where you search by an id (or other parameters) that must STRICTLY match a record, in a vector database such an exact match is not required.
 
-2. Поиск осуществляется по косинусной метрике(косинусу между векторами). Это можно представить в виде коминуса угла между двумя гипотинузами, образованными расстоянием между тремя вершинами графа(начального вектора[тот что мы задали], и двух его близжайших соседей). Чем ближе косинус к 1, тем больше совпадения между векторами
+2. The search is performed using the cosine metric (the cosine between vectors). You can think of it as the cosine of the angle between two hypotenuses formed by the distances between three vertices of a graph (the initial vector – the one we provide – and its two nearest neighbors). The closer the cosine is to 1, the higher the similarity between the vectors.
 
-3. Почему вектора? они имеют направление! Вектор в два раза больший по длине будет иметь тот же косинус, что и вектор в два раза меньший. Вектор в противоположном направлении будет иметь косинус -1
+3. Why vectors? Because they have direction! A vector that is twice as long will have the same cosine as a vector that is half as long. A vector in the opposite direction will have a cosine of -1.
 
 ```
 
 # Embedding
 
-Embedding - алгоритм преобразования данных в вектор.
+Embedding is an algorithm for transforming data into a vector.
 
-### Типы Embedding
-
-  ```
-
-   1. Danse - вектор имеющий ненулевые значения элементов. Эти вектора обычно имеют меньшую размерность. Хорошо подходят для поисков.
-
-   2. Spaese - вектор имеюющщий нулевые значения элементов. Много большая размерность(10к-1000кк). Не требуется для обычения для нейросетей. Используется в поиске в браузере
+### Types of Embedding
 
   ```
 
-### Что это за вектор на выходе?
+   1. Dense – a vector whose elements have non-zero values. These vectors usually have lower dimensionality and are well suited for search.
+
+   2. Sparse – a vector that has many zero-valued elements. These vectors usually have a much higher dimensionality (10k–1,000k+). They are not typically used for training neural networks, but are used in search systems in browsers.
+
+  ```
+
+### What is this output vector?
 
   ```python
-    v = [0.13, ..., 0.875] - размерности n 
+    v = [0.13, ..., 0.875] – of dimensionality n
   ```
 
-  означает точко в проствренстве размерности n, где каждая ось направленя 
+  means a point in an n-dimensional space, where each axis is a direction
 
-# Что делать, если данные большие. 
+# What to do if the data is large.
 
-Предположим, что нам надо загрузить в базу "Войну и мир" Толстого. Мы не можем просто взять и загрузить одним скопом все, как минимум потому что это потеряет смысл, если мы будем искать по одной вершине из ЦЕЛОЙ книги.
-Например при вводе "Что за дуб был в романе?" и "Как умер книзь Балконский?" будет ответ всей книгой. Нам это не нужно для дальшей обработки данных AI.
+Let’s assume we need to load War and Peace by Tolstoy into a database. We can’t just take and load the whole thing in one go, at least because it would lose its meaning if we search by a single query against the ENTIRE book.
+For example, if someone types “What was the oak like in the novel?” or “How did Prince Bolkonsky die?”, the answer would be the whole book. We don’t need that for further AI data processing.
 
-Мы должны разбить текст на чанки. Чанк - это данные определнной размерности.
+We have to split the text into chunks.
+A chunk is data of a certain size.
 
-Выделяется разное разбиение
-  1. По смыслу(Семантический чанк)
-  2. По количеству слов(например 500 слов)
-  3. По главам(text.split("/n/n"))
-  4. Кастомно по любому другому признаку
+There are different ways to split it:
 
-Так на два запроса будет выдано две близжайшие вершины графа. Они не будут полной книгой. Это будут отдельные предложения или абзацы.
+By meaning (semantic chunks)
 
+By number of words (for example, 500 words)
 
+By chapters (text.split("\n\n"))
 
-# Что если данные это не текст
+Custom – by any other criterion
 
-Предположим, что мы хотим занести в базу вектор файла(изображение, аудиофайл, ...)
-
-Так как мы преобразовываем в вектор текст, то мы как бы сохраняем uuid, chunk_text, vector - по сути мы по вектору ищем chunk_text - он не имеет кодировки, обычный текст.
-
-С файлами мы сохраняем uuid, file_link, vector - то же самое, но только мы должны хранить еще где то сами файлы. Обратно преобразовать из вектора в данные мы не можем.
+This way, for two different queries we will get two nearest vertices of the graph. They will not be the whole book. They will be individual sentences or paragraphs.
 
 
 
-
-# Построение индекса в базе данных
-
-## Как это работает. Как работает поиск. Алгоритмы.
-
-  HNSW(Hierarchical Navigable Small World) - алгоритм поиска на основе иерархии(слоев) с графами приближающимися в вершине-вектору на последнем слое
-     
-  Представление: 
-  
+## What if the data is not text
+Let’s assume we want to store a vector of a file (an image, audio file, ...).
+When we convert text into a vector, we basically store: uuid, chunk_text, vector – essentially, we use the vector to search for chunk_text – it has no encoding, it’s just regular text.
+With files we store: uuid, file_link, vector – the same idea, except we also have to store the actual files somewhere else. We cannot convert back from the vector into the original data.
+## Building an index in a database
+How it works. How search works. Algorithms.
+HNSW (Hierarchical Navigable Small World) – a search algorithm based on a hierarchy (layers) with graphs that approximate the vertex–vector at the last layer.
+Representation:
   ![image](https://github.com/user-attachments/assets/9d0faf4c-6d5e-486c-b925-59b3aa96a819)
 
 
-  Граф G - граф, состоящий из всех вершин и ребер, имеющихся в базе. (uuid + embedding).
-  На верхнем слое находится самый "маленький" подграф графа G. На нижнем слое граф G. Верхний слой содержит n вершин и n-1 ребер. Количество n опционально, выборка случайная.
-  
-  На верхнем слое находится локальный минимум(самая приближенная вершина к искомой).
+The graph G is a graph consisting of all vertices and edges present in the database (uuid + embedding).
+On the top layer there is the “smallest” subgraph of graph G. On the bottom layer there is the full graph G. The top layer contains n vertices and n − 1 edges. The value of n is optional, the selection is random.
 
-  На следующем слое идет выборка следующих n вершин, являющимися соседями к локальномому минимуму предыдущего слоя.
+On the top layer there is a local minimum (the vertex closest to the query).
 
-  На последнем слое находится весь граф. Зная локальный минимум предедущего слоя мы начинаем с этой вершины. Процесс повторяется и снова ищется локальный минимум. Ответ - локальный   минимум и его соседи нижнего слоя. 
+On the next layer there is a selection of the next n vertices that are neighbors of the local minimum from the previous layer.
 
-  Яркий пример: 
-  Предположим у меня на карте нет названий стран и городов, но есть названия улиц. Мне нужно найти улице Политехническую 29 в Санкт-Петербурге. Вместо того, чтоб на одной карте искать эту улицу, я возьму сначала карту со странами - найду Россию. Потом возьму карту на городами - Найду Санкт-Петербург. И на конечной карте с улицами я найду искомую улицу.
-  Это сильну ускоряет поиск + исключает ошибки когда мы прийдем к улице Поличехнической 29 в Москве или в любом другом городе (если таковая имеется).
-  
+On the last layer we have the entire graph. Knowing the local minimum of the previous layer, we start from this vertex. The process is repeated and again a local minimum is found. The answer is the local minimum and its neighbors of the lower layer.
 
+A vivid example:
+Let’s assume that on my map there are no country and city names, but there are street names. I need to find Polytechnicheskaya street 29 in Saint Petersburg. Instead of looking for this street on a single map, I first take a map with countries and find Russia. Then I take a map with cities and find Saint Petersburg. And on the final map with streets I find the desired street.
+This greatly speeds up the search and also eliminates errors where we might end up at Polytechnicheskaya street 29 in Moscow or any other city (if such a street exists there).
 
+DISKANN is an index-building algorithm that includes two technologies:
 
-  DISKANN - алгоритм построения индексов, который включает две технологии:
+Vamana Graph – a disk-based graph index that connects data points (or vectors) for efficient navigation during search.
 
-  1. Vamana Graph - дисковый индекс на основе графа, который соединяет точки данных (или векторы) для эффективной навигации во время поиска.
-  2. Product Quantization (PQ) - метод сжатия в памяти, который уменьшает размер векторов, позволяя быстро вычислять приблизительное расстояние между ними.
+Product Quantization (PQ) – an in-memory compression method that reduces the size of vectors, allowing fast computation of approximate distances between them.
 
-  Граф Вамана
-  Граф Vamana занимает центральное место в дисковой стратегии DISKANN. Он может работать с очень большими наборами данных, поскольку ему не нужно полностью размещаться в памяти во время или после построения.
-
-  Я если честно пока не до конца представляю как он работает, видимо там выборка ребер сжимается до самых коротких
-  https://milvus.io/docs/ru/diskann.md - ссылка на полное пояснение
+Vamana graph
+The Vamana graph plays a central role in DISKANN’s disk-based strategy. It can work with very large datasets because it does not need to fully reside in memory during or after construction.
   
 ![image](https://github.com/user-attachments/assets/83b6e439-d163-4735-85ca-bb286dc617c1)
 
