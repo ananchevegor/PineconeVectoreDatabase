@@ -1,95 +1,227 @@
-# Information relevant to the topic
-First of all, this is all for myself.
-These will just be notes about what I’ve understood, etc.
+# Vector Databases, Embeddings, and ANN Indexes — Personal Notes (README)
 
+> **Purpose:** My own notes — what I understood so far about vector databases, embeddings, chunking, and approximate nearest neighbor (ANN) indexing.
+
+---
+
+## Table of Contents
+
+- [What is a Vector Database?](#what-is-a-vector-database)
+- [Similarity Search (Cosine, Dot, L2)](#similarity-search-cosine-dot-l2)
+- [Embeddings](#embeddings)
+  - [Dense vs Sparse](#dense-vs-sparse)
+  - [What the Output Vector Represents](#what-the-output-vector-represents)
+- [When Data Is Large: Chunking](#when-data-is-large-chunking)
+  - [Chunking Strategies](#chunking-strategies)
+  - [Why Chunking Matters](#why-chunking-matters)
+- [What if the Data Is Not Text?](#what-if-the-data-is-not-text)
+- [How Vector Search Is Made Fast: Indexes](#how-vector-search-is-made-fast-indexes)
+  - [HNSW (Hierarchical Navigable Small World)](#hnsw-hierarchical-navigable-small-world)
+  - [DISKANN (Vamana Graph + Product Quantization)](#diskann-vamana-graph--product-quantization)
+- [Practical Patterns](#practical-patterns)
+- [Common Pitfalls](#common-pitfalls)
+- [Glossary](#glossary)
+
+---
+
+## What is a Vector Database?
+
+A **vector database** stores items as **vectors (embeddings)** and supports **nearest-neighbor search**: given a query vector, it finds stored vectors that are “closest” under a similarity/distance metric.
+
+Key idea:
+
+- In a “classic” DB query, you typically search by **exact matches** or strict conditions (`id = ...`, `status = ...`, `price < ...`).
+- In a vector DB, you search by **similarity**: items don’t need to match exactly; they just need to be *close enough* in vector space.
+
+In practice, vector databases often also support:
+
+- **Metadata filtering** (e.g., `tenant_id`, `type`, `created_at`)
+- **Hybrid search** (combining vector similarity + keyword/BM25)
+
+---
+
+## Similarity Search (Cosine, Dot, L2)
+
+The most common similarity approaches:
+
+- **Cosine similarity** — compares direction (angle) between vectors.
+- **Dot product** — similar to cosine if vectors are normalized; also used when magnitude encodes something meaningful.
+- **Euclidean (L2) distance** — compares absolute distance in vector space.
+
+### Cosine similarity
+
+Given vectors `a` and `b`:
+
+\[
+\cos(\theta) = \frac{a \cdot b}{\|a\|\|b\|}
+\]
+
+Interpretation:
+
+- `cos ≈ 1` → vectors point in the **same direction** (high similarity)
+- `cos ≈ 0` → vectors are **orthogonal** (unrelated)
+- `cos ≈ -1` → vectors point in **opposite directions**
+
+Why “direction” matters:
+
+- If you scale a vector up/down (make it longer/shorter), the **cosine similarity stays the same** (because scaling cancels out in the normalization).
+- Many embedding pipelines **normalize vectors** (unit length), which makes cosine and dot product effectively equivalent.
+
+---
+
+## Embeddings
+
+An **embedding** is a function/algorithm that transforms data into a vector:
+
+- Text → vector
+- Image → vector
+- Audio → vector
+- Code → vector
+- etc.
+
+The goal: in vector space, **semantic/functional similarity** tends to correspond to **geometric closeness**.
+
+### Dense vs Sparse
+
+1. **Dense embeddings**
+   - Most elements are non-zero.
+   - Typical dimensionalities: `256`, `512`, `768`, `1536`, `3072`, etc.
+   - Very common for semantic search and neural retrieval.
+
+2. **Sparse embeddings**
+   - Many elements are `0`.
+   - Very high dimensionality (often `10k` → `1,000k+`).
+   - Historically common in classical search (e.g., TF-IDF/BM25), and also in modern “sparse neural” approaches.
+   - Useful when exact terms/rare keywords matter a lot.
+
+> Dense ≈ meaning/semantics  
+> Sparse ≈ lexical matching / exact tokens  
+> Hybrid often gives the best of both.
+
+### What the Output Vector Represents
+
+Example:
+
+```python
+v = [0.13, ..., 0.875]  # dimensionality = n
 ```
 
-1. Vector databases store information in vectors and perform search “by meaning” (semantic search). This means that, unlike a regular indexed database where you search by an id (or other parameters) that must STRICTLY match a record, in a vector database such an exact match is not required.
+ ## Building an Index in a Vector Database
 
-2. The search is performed using the cosine metric (the cosine between vectors). You can think of it as the cosine of the angle between two hypotenuses formed by the distances between three vertices of a graph (the initial vector – the one we provide – and its two nearest neighbors). The closer the cosine is to 1, the higher the similarity between the vectors.
+Vector search becomes slow if we do it “naively”:
 
-3. Why vectors? Because they have direction! A vector that is twice as long will have the same cosine as a vector that is half as long. A vector in the opposite direction will have a cosine of -1.
+- compute distance(query_vector, **every** vector in the DB)
+- sort
+- return top-K
 
-```
+That’s **O(N)** per query, which doesn’t scale.  
+So vector databases build **ANN indexes** (Approximate Nearest Neighbors):
 
-# Embedding
+- **Approximate** = not always the mathematically perfect nearest vectors
+- but usually *very high recall*
+- and *orders of magnitude faster* in practice
 
-Embedding is an algorithm for transforming data into a vector.
+---
 
-### Types of Embedding
+## Similarity Metrics (Cosine / Dot / L2)
 
-  ```
+### Cosine similarity
+Cosine similarity measures **direction**, not magnitude:
 
-   1. Dense – a vector whose elements have non-zero values. These vectors usually have lower dimensionality and are well suited for search.
+- same direction → similarity close to **1**
+- orthogonal → around **0**
+- opposite direction → close to **-1**
 
-   2. Sparse – a vector that has many zero-valued elements. These vectors usually have a much higher dimensionality (10k–1,000k+). They are not typically used for training neural networks, but are used in search systems in browsers.
+Why it’s popular:
+- If you scale a vector up/down, cosine stays the same (direction unchanged).
+- Many embedding pipelines normalize vectors to unit length, making cosine ≈ dot product.
 
-  ```
+---
 
-### What is this output vector?
+## HNSW (Hierarchical Navigable Small World)
 
-  ```python
-    v = [0.13, ..., 0.875] – of dimensionality n
-  ```
+HNSW is one of the most common ANN structures because it’s fast and accurate.
 
-  means a point in an n-dimensional space, where each axis is a direction
+### Representation
+![HNSW](https://github.com/user-attachments/assets/9d0faf4c-6d5e-486c-b925-59b3aa96a819)
 
-# What to do if the data is large.
+### Idea
+HNSW builds a **multi-layer graph**:
 
-Let’s assume we need to load War and Peace by Tolstoy into a database. We can’t just take and load the whole thing in one go, at least because it would lose its meaning if we search by a single query against the ENTIRE book.
-For example, if someone types “What was the oak like in the novel?” or “How did Prince Bolkonsky die?”, the answer would be the whole book. We don’t need that for further AI data processing.
+- **Bottom layer** contains the full graph **G** (all vertices = vectors)
+- Each upper layer is a smaller subgraph (fewer vertices, fewer edges)
+- Upper layers act like “shortcuts” to quickly reach the right region of the space
 
-We have to split the text into chunks.
-A chunk is data of a certain size.
+### How search works (high-level)
+1. Start at an entry point on the **top layer**
+2. Greedily move to neighbors that are closer to the query
+3. When no better neighbor exists, you found a **local minimum** on that layer
+4. Drop down one layer and continue, using that local minimum as the new starting point
+5. Repeat until the bottom layer
+6. Return the closest node(s) (top-K)
 
-There are different ways to split it:
+### Intuition (map analogy)
+Instead of searching for a street on one giant detailed map:
 
-By meaning (semantic chunks)
+1. Map of countries → find **Russia**
+2. Map of cities → find **Saint Petersburg**
+3. Map of streets → find **Polytechnicheskaya 29**
 
-By number of words (for example, 500 words)
+This speeds up search and reduces the chance of ending up in the wrong “region”.
 
-By chapters (text.split("\n\n"))
+---
 
-Custom – by any other criterion
+## DISKANN (DiskANN) — Disk-based Indexing
 
-This way, for two different queries we will get two nearest vertices of the graph. They will not be the whole book. They will be individual sentences or paragraphs.
+DISKANN is aimed at very large datasets where you can’t keep everything in RAM.
 
+It combines two key ideas:
 
+1. **Vamana Graph** — a disk-friendly graph index that connects points for efficient navigation  
+2. **Product Quantization (PQ)** — compresses vectors to reduce memory and speed approximate distance computations
 
-## What if the data is not text
-Let’s assume we want to store a vector of a file (an image, audio file, ...).
-When we convert text into a vector, we basically store: uuid, chunk_text, vector – essentially, we use the vector to search for chunk_text – it has no encoding, it’s just regular text.
-With files we store: uuid, file_link, vector – the same idea, except we also have to store the actual files somewhere else. We cannot convert back from the vector into the original data.
-## Building an index in a database
-How it works. How search works. Algorithms.
-HNSW (Hierarchical Navigable Small World) – a search algorithm based on a hierarchy (layers) with graphs that approximate the vertex–vector at the last layer.
-Representation:
-  ![image](https://github.com/user-attachments/assets/9d0faf4c-6d5e-486c-b925-59b3aa96a819)
+### Vamana Graph
+The Vamana graph is central to DiskANN’s disk-based strategy.  
+It can work with very large datasets because the index does not need to fully reside in memory.
 
+![Vamana](https://github.com/user-attachments/assets/83b6e439-d163-4735-85ca-bb286dc617c1)
 
-The graph G is a graph consisting of all vertices and edges present in the database (uuid + embedding).
-On the top layer there is the “smallest” subgraph of graph G. On the bottom layer there is the full graph G. The top layer contains n vertices and n − 1 edges. The value of n is optional, the selection is random.
+### Product Quantization (PQ)
+PQ compresses vectors so that:
 
-On the top layer there is a local minimum (the vertex closest to the query).
+- distance computations can be done faster on compact codes
+- memory usage drops significantly
+- you can first do a fast approximate pass, then (optionally) refine using exact vectors
 
-On the next layer there is a selection of the next n vertices that are neighbors of the local minimum from the previous layer.
+---
 
-On the last layer we have the entire graph. Knowing the local minimum of the previous layer, we start from this vertex. The process is repeated and again a local minimum is found. The answer is the local minimum and its neighbors of the lower layer.
+## Large Data: Why Chunking Is Required (Recap)
 
-A vivid example:
-Let’s assume that on my map there are no country and city names, but there are street names. I need to find Polytechnicheskaya street 29 in Saint Petersburg. Instead of looking for this street on a single map, I first take a map with countries and find Russia. Then I take a map with cities and find Saint Petersburg. And on the final map with streets I find the desired street.
-This greatly speeds up the search and also eliminates errors where we might end up at Polytechnicheskaya street 29 in Moscow or any other city (if such a street exists there).
+If you embed an entire book as one vector, retrieval becomes too broad.
 
-DISKANN is an index-building algorithm that includes two technologies:
+Instead:
+- split content into **chunks**
+- embed each chunk
+- store each chunk separately
 
-Vamana Graph – a disk-based graph index that connects data points (or vectors) for efficient navigation during search.
+Then queries retrieve the most relevant **paragraphs/sections**, not the whole book.
 
-Product Quantization (PQ) – an in-memory compression method that reduces the size of vectors, allowing fast computation of approximate distances between them.
+---
 
-Vamana graph
-The Vamana graph plays a central role in DISKANN’s disk-based strategy. It can work with very large datasets because it does not need to fully reside in memory during or after construction.
-  
-![image](https://github.com/user-attachments/assets/83b6e439-d163-4735-85ca-bb286dc617c1)
+## Non-text Data (Images, Audio, Files)
+
+For files, the vector is only a **search key**, not a reversible encoding.
+
+Typical storage:
+- `uuid`
+- `file_link` / `storage_key`
+- `vector`
+- metadata
+
+Important:
+- you generally **cannot reconstruct the original file from the vector**
+- the raw file must be stored separately (object storage / filesystem)
+
 
   
 
